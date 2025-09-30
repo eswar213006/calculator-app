@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Calculator — Basic + Scientific</title>
+<style>
+  :root{
+    --bg:#0f1724; --panel:#111827; --accent:#06b6d4; --muted:#9ca3af; --glass: rgba(255,255,255,0.03);
+    font-family: Inter, system-ui, "Segoe UI", Roboto, Arial;
+  }
+  html,body{height:100%; margin:0; background:linear-gradient(180deg,#071331 0%, #02111a 100%); color:#e6eef6;}
+  .wrap{max-width:460px;margin:32px auto;padding:20px;border-radius:12px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));box-shadow:0 6px 30px rgba(2,6,23,0.7);}
+  .display{background:var(--panel);padding:16px;border-radius:10px;color:#e6eef6; font-size:1.4rem; display:flex;flex-direction:column; gap:6px}
+  .expr{color:var(--muted);font-size:0.9rem;min-height:20px; word-wrap:break-word;}
+  .out{font-size:1.6rem; font-weight:600; text-align:right; min-height:28px;}
+  .controls{display:flex;gap:8px;margin-top:12px;align-items:center;justify-content:space-between}
+  .btn{background:var(--glass);border:none;padding:10px 12px;border-radius:8px;color:var(--muted);cursor:pointer;font-weight:600}
+  .btn.primary{background:linear-gradient(90deg,var(--accent),#7c3aed);color:#02111a}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+  .btn.big{grid-column: span 2}
+  .function{background:rgba(255,255,255,0.03);color:#e6eef6}
+  .toggle{display:inline-flex;gap:8px;align-items:center}
+  .small{font-size:0.9rem;color:var(--muted)}
+  .history{margin-top:12px;max-height:140px;overflow:auto;padding:10px;border-radius:8px;background:rgba(255,255,255,0.02);font-size:0.9rem}
+  .history-item{padding:6px;border-bottom:1px dashed rgba(255,255,255,0.02);display:flex;justify-content:space-between;align-items:center}
+  .hint{font-size:0.85rem;color:var(--muted);margin-top:8px}
+  @media (max-width:480px){.wrap{margin:14px;padding:14px}}
+</style>
+</head>
+<body>
+  <div class="wrap" role="application" aria-label="Calculator">
+    <div class="display" id="display">
+      <div class="expr" id="expr" aria-live="polite"></div>
+      <div class="out" id="out" aria-live="polite">0</div>
+    </div>
+
+    <div class="controls">
+      <div style="display:flex;gap:8px">
+        <button class="btn" id="ac">AC</button>
+        <button class="btn" id="del">DEL</button>
+        <button class="btn" id="paren">( )</button>
+      </div>
+      <div class="toggle">
+        <label class="small">Deg</label>
+        <button class="btn" id="degToggle">RAD</button>
+        <button class="btn primary" id="equals">=</button>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+      <button class="btn function" id="sciToggle">Toggle Scientific</button>
+      <div class="small" style="margin-left:auto">Use keyboard: 0-9 + - * / ^ ( ) . Enter Backspace</div>
+    </div>
+
+    <div id="sciGrid" style="display:none;margin-top:10px" aria-hidden="true">
+      <div class="grid">
+        <button class="btn function">sin</button>
+        <button class="btn function">cos</button>
+        <button class="btn function">tan</button>
+        <button class="btn function">ln</button>
+
+        <button class="btn function">log</button>
+        <button class="btn function">sqrt</button>
+        <button class="btn function">^</button>
+        <button class="btn function">!</button>
+
+        <button class="btn function">pi</button>
+        <button class="btn function">e</button>
+        <button class="btn function">abs</button>
+        <button class="btn function">ANS</button>
+      </div>
+    </div>
+
+    <div class="grid" id="basicGrid" style="margin-top:12px">
+      <button class="btn">7</button><button class="btn">8</button><button class="btn">9</button><button class="btn function">/</button>
+      <button class="btn">4</button><button class="btn">5</button><button class="btn">6</button><button class="btn function">*</button>
+      <button class="btn">1</button><button class="btn">2</button><button class="btn">3</button><button class="btn function">-</button>
+      <button class="btn">0</button><button class="btn">.</button><button class="btn big primary" id="equals2">=</button><button class="btn function">+</button>
+    </div>
+
+    <div class="history" id="history" aria-live="polite">
+      <div style="font-weight:600;margin-bottom:6px">History</div>
+      <div id="historyList"></div>
+    </div>
+
+    <div class="hint">Examples: <code>2+2</code>, <code>sin(30)</code>, <code>5!</code>, <code>2^3^2</code>, <code>ln(10)</code></div>
+  </div>
+
+<script>
+(function(){
+  const exprEl = document.getElementById('expr'), outEl = document.getElementById('out');
+  const ac = document.getElementById('ac'), del = document.getElementById('del'), paren = document.getElementById('paren');
+  const equals = document.getElementById('equals'), equals2 = document.getElementById('equals2'), degToggle = document.getElementById('degToggle');
+  const sciToggle = document.getElementById('sciToggle'), sciGrid = document.getElementById('sciGrid');
+  const historyList = document.getElementById('historyList');
+
+  let expression = '';
+  let isDeg = false;
+  let lastAns = null;
+  let showSci = false;
+  let history = [];
+
+  function updateDisplay(){
+    exprEl.textContent = expression || ' ';
+    outEl.textContent = expression? '' : '0';
+  }
+
+  function append(str){
+    expression += str;
+    updateDisplay();
+  }
+
+  function backspace(){
+    expression = expression.slice(0,-1);
+    updateDisplay();
+  }
+
+  function clearAll(){
+    expression = '';
+    outEl.textContent = '0';
+    updateDisplay();
+  }
+
+  function pushHistory(expr, result){
+    history.unshift({expr, result});
+    if(history.length>12) history.pop();
+    renderHistory();
+  }
+  function renderHistory(){
+    historyList.innerHTML = history.map(h=>`
+      <div class="history-item"><div style="max-width:70%;">${escapeHtml(h.expr)}</div><div style="opacity:0.9">${escapeHtml(String(h.result))}</div></div>
+    `).join('');
+  }
+  function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') }
+
+  // Button clicks
+  document.querySelectorAll('.grid .btn, #sciGrid .btn').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      const t = (e.target.textContent || '').trim();
+      if(!t) return;
+      if(/\d/.test(t) || t==='.' ) append(t);
+      else if(['+','-','*','/','^','!','(',')'].includes(t)) append(t);
+      else if(t==='pi') append('pi');
+      else if(t==='e') append('e');
+      else if(t==='ANS') append(String(lastAns === null ? '' : lastAns));
+      else append(t + '('); // functions: sin( etc.
+    });
+  });
+
+  ac.addEventListener('click', clearAll);
+  del.addEventListener('click', backspace);
+  paren.addEventListener('click', ()=> append('('));
+  equals.addEventListener('click', compute);
+  equals2.addEventListener('click', compute);
+  degToggle.addEventListener('click', ()=>{
+    isDeg = !isDeg;
+    degToggle.textContent = isDeg ? 'DEG' : 'RAD';
+    degToggle.style.background = isDeg ? 'linear-gradient(90deg,var(--accent),#7c3aed)' : '';
+  });
+
+  sciToggle.addEventListener('click', ()=>{
+    showSci = !showSci;
+    sciGrid.style.display = showSci ? 'block' : 'none';
+    sciGrid.setAttribute('aria-hidden', (!showSci).toString());
+  });
+
+  // keyboard
+  window.addEventListener('keydown', (ev)=>{
+    if(ev.key === 'Enter') { ev.preventDefault(); compute(); return; }
+    if(ev.key === 'Backspace'){ backspace(); return; }
+    if(ev.key === 'Escape'){ clearAll(); return; }
+    const allowed = '0123456789.+-*/^()!';
+    if(allowed.includes(ev.key)) { append(ev.key); ev.preventDefault(); }
+    if(ev.key === 's') append('sin(');
+    if(ev.key === 'c') append('cos(');
+    if(ev.key === 't') append('tan(');
+    if(ev.key === 'l') append('ln(');
+  });
+
+  // --- Expression parsing & evaluation (no eval) ---
+  function tokenize(s){
+    s = s.replace(/\s+/g,'');
+    const tokens = [];
+    let i=0;
+    while(i<s.length){
+      const ch = s[i];
+      if(/\d|\./.test(ch)){
+        let num = ch; i++;
+        while(i<s.length && /[\d.]/.test(s[i])){ num+=s[i++]; }
+        tokens.push({type:'number', value:num});
+        continue;
+      }
+      if(/[a-zA-Z]/.test(ch)){
+        let id = ch; i++;
+        while(i<s.length && /[a-zA-Z0-9]/.test(s[i])) id += s[i++];
+        if(id.toLowerCase()==='pi') tokens.push({type:'number', value: String(Math.PI)});
+        else if(id.toLowerCase()==='e') tokens.push({type:'number', value: String(Math.E)});
+        else tokens.push({type:'func', value: id.toLowerCase()});
+        continue;
+      }
+      // operators & parentheses & factorial
+      if(ch === '(' || ch === ')'){ tokens.push({type:ch}); i++; continue; }
+      if(ch === '!'){ tokens.push({type:'postop', value:'!'}); i++; continue; }
+      if(['+','-','*','/','^'].includes(ch)){
+        // unary minus detection
+        if(ch === '-' ){
+          const prev = tokens.length? tokens[tokens.length-1] : null;
+          if(!prev || (prev.type === 'op' || prev.type === '(' || prev.type === 'func')) {
+            tokens.push({type:'op', value:'u-'}); // unary minus
+            i++; continue;
+          }
+        }
+        tokens.push({type:'op', value:ch}); i++; continue;
+      }
+      // unknown char: skip
+      i++;
+    }
+    return tokens;
+  }
+
+  function toRPN(tokens){
+    const out = [];
+    const ops = [];
+    const precedence = { '!': 5, 'u-':5, '^':4, '*':3, '/':3, '+':2, '-':2 };
+    const assoc = { '!':'left', 'u-':'right', '^':'right', '*':'left','/':'left','+':'left','-':'left' };
+
+    tokens.forEach(t=>{
+      if(t.type==='number') out.push(t);
+      else if(t.type==='func') ops.push(t);
+      else if(t.type==='postop'){ // factorial -> push directly as operator in output as it's postfix
+        out.push(t);
+      }
+      else if(t.type==='op'){
+        while(ops.length){
+          const top = ops[ops.length-1];
+          const topOp = top.type==='op' ? top.value : (top.type==='func'? top.value : null);
+          if(top.type==='op' && (
+              (assoc[t.value]==='left' && precedence[t.value] <= precedence[topOp]) ||
+              (assoc[t.value]==='right' && precedence[t.value] < precedence[topOp])
+            )){
+            out.push(ops.pop());
+          } else break;
+        }
+        ops.push(t);
+      }
+      else if(t.type==='(') ops.push(t);
+      else if(t.type===')'){
+        while(ops.length && ops[ops.length-1].type !== '(') out.push(ops.pop());
+        if(ops.length && ops[ops.length-1].type === '(') ops.pop();
+        if(ops.length && ops[ops.length-1].type === 'func') out.push(ops.pop());
+      }
+    });
+
+    while(ops.length) out.push(ops.pop());
+    return out;
+  }
+
+  function factorial(n){
+    if(n < 0) return NaN;
+    if(Math.floor(n) !== n) return NaN;
+    let r = 1;
+    for(let i=2;i<=n;i++) r*=i;
+    return r;
+  }
+
+  function applyFunc(name, v){
+    name = name.toLowerCase();
+    const angle = isDeg ? (v * Math.PI / 180) : v;
+    switch(name){
+      case 'sin': return Math.sin(angle);
+      case 'cos': return Math.cos(angle);
+      case 'tan': return Math.tan(angle);
+      case 'sqrt': return Math.sqrt(v);
+      case 'ln': return Math.log(v);
+      case 'log': return Math.log10 ? Math.log10(v) : Math.log(v)/Math.LN10;
+      case 'abs': return Math.abs(v);
+      default: return NaN;
+    }
+  }
+
+  function evalRPN(rpn){
+    const stack = [];
+    for(const t of rpn){
+      if(t.type==='number'){ stack.push(parseFloat(t.value)); }
+      else if(t.type==='postop' && t.value === '!'){
+        const a = stack.pop();
+        stack.push(factorial(a));
+      }
+      else if(t.type==='func'){
+        const a = stack.pop();
+        stack.push(applyFunc(t.value, a));
+      }
+      else if(t.type==='op'){
+        if(t.value === 'u-'){
+          const a = stack.pop(); stack.push(-a);
+        } else {
+          const b = stack.pop(); const a = stack.pop();
+          switch(t.value){
+            case '+': stack.push(a + b); break;
+            case '-': stack.push(a - b); break;
+            case '*': stack.push(a * b); break;
+            case '/': stack.push(a / b); break;
+            case '^': stack.push(Math.pow(a,b)); break;
+            default: stack.push(NaN);
+          }
+        }
+      } else {
+        // unknown token type
+      }
+    }
+    return stack.length? stack[stack.length-1] : NaN;
+  }
+
+  function formatNumber(x){
+    if(isNaN(x)) return 'Error';
+    if(!isFinite(x)) return x>0? 'Infinity' : '−Infinity';
+    // limit decimals smartly
+    let s = String(Number.parseFloat(x.toPrecision(12)));
+    // fix negative zero
+    if(s === '-0') s = '0';
+    return s;
+  }
+
+  function compute(){
+    if(!expression) return;
+    try{
+      const tokens = tokenize(expression);
+      const rpn = toRPN(tokens);
+      const result = evalRPN(rpn);
+      const formatted = formatNumber(result);
+      outEl.textContent = formatted;
+      lastAns = result;
+      pushHistory(expression, formatted);
+    } catch(e){
+      outEl.textContent = 'Error';
+    }
+  }
+
+  // init
+  updateDisplay();
+})();
+</script>
+</body>
+</html>
